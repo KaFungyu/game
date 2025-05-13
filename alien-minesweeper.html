@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>外星人扫雷 - IOS风格</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background: #f5f5f7;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .game-title {
+            color: #1d1d1f;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        .game-stats {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 20px;
+            color: #6e6e73;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(9, 40px);
+            gap: 4px;
+            background: #e8e8ed;
+            padding: 4px;
+            border-radius: 12px;
+        }
+        .cell {
+            width: 40px;
+            height: 40px;
+            background: #fff;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .cell.closed {
+            background: #007aff;
+            color: transparent;
+        }
+        .cell.flagged {
+            background: rgba(255, 149, 0, 0.5); /* 增加背景透明度以提高图标对比度 */
+            position: relative;
+        }
+        .cell.flagged::after {
+            content: "🛸";
+            font-size: 24px; /* 增大图标尺寸提高可见性 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+        }
+        .cell.mine {
+            background: #ff3b30;
+            position: relative;
+        }
+        .cell.mine::after {
+            content: "👽";
+            font-size: 20px;
+        }
+        .cell-number-1 { color: #007aff; }
+        .cell-number-2 { color: #34c759; }
+        .cell-number-3 { color: #ff3b30; }
+        .cell-number-4 { color: #5856d6; }
+        .cell-number-5 { color: #ff2d55; }
+        .cell-number-6 { color: #32d74b; }
+        .cell-number-7 { color: #ff9f0a; }
+        .cell-number-8 { color: #ff6b81; }
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95);
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .game-over h2 {
+            color: #1d1d1f;
+            margin-bottom: 16px;
+        }
+        .restart-btn {
+            padding: 12px 24px;
+            background: #007aff;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .restart-btn:hover {
+            background: #0066cc;
+        }
+    </style>
+</head>
+<body>
+    <h1 class="game-title">👽 外星人扫雷</h1>
+    <div class="game-stats">
+        <div>雷数: <span id="mine-count">10</span></div>
+        <div>时间: <span id="time">0</span> 秒</div>
+    </div>
+    <div class="board" id="board"></div>
+    <div class="game-over" id="game-over" style="display: none;">
+        <h2 id="game-result"></h2>
+        <button class="restart-btn" onclick="initGame()">重新开始</button>
+    </div>
+    <script>
+        const BOARD_SIZE = 9;
+        const MINE_COUNT = 10;
+        let board = [];
+        let timer;
+        let timeElapsed = 0;
+        let gameActive = false;
+
+        function createBoard() {
+            const cells = Array(BOARD_SIZE * BOARD_SIZE).fill(null).map((_, i) => ({ 
+                id: i,
+                isMine: false,
+                isOpen: false,
+                isFlagged: false,
+                neighborMines: 0
+            }));
+
+            // 随机布雷
+            let minesPlaced = 0;
+            while (minesPlaced < MINE_COUNT) {
+                const index = Math.floor(Math.random() * cells.length);
+                if (!cells[index].isMine) {
+                    cells[index].isMine = true;
+                    minesPlaced++;
+                }
+            }
+
+            // 计算相邻雷数
+            cells.forEach(cell => {
+                if (cell.isMine) return;
+                const row = Math.floor(cell.id / BOARD_SIZE);
+                const col = cell.id % BOARD_SIZE;
+                let count = 0;
+
+                for (let i = -1; i <= 1; i++) {
+                    for (let j = -1; j <= 1; j++) {
+                        const newRow = row + i;
+                        const newCol = col + j;
+                        if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
+                            const neighborId = newRow * BOARD_SIZE + newCol;
+                            if (cells[neighborId].isMine) count++;
+                        }
+                    }
+                }
+                cell.neighborMines = count;
+            });
+
+            return cells;
+        }
+
+        function openCell(cell) {
+            if (cell.isOpen || cell.isFlagged || !gameActive) return;
+
+            cell.isOpen = true;
+            const cellElement = document.querySelector(`[data-id="${cell.id}"]`);
+            cellElement.classList.remove('closed');
+
+            if (cell.isMine) {
+                cellElement.classList.add('mine');
+                gameOver(false);
+                return;
+            }
+
+            if (cell.neighborMines > 0) {
+                cellElement.textContent = cell.neighborMines;
+                cellElement.classList.add(`cell-number-${cell.neighborMines}`);
+            } else {
+                // 递归展开相邻空单元格
+                const row = Math.floor(cell.id / BOARD_SIZE);
+                const col = cell.id % BOARD_SIZE;
+                for (let i = -1; i <= 1; i++) {
+                    for (let j = -1; j <= 1; j++) {
+                        const newRow = row + i;
+                        const newCol = col + j;
+                        if (newRow >= 0 && newRow < BOARD_SIZE && newCol >= 0 && newCol < BOARD_SIZE) {
+                            const neighborId = newRow * BOARD_SIZE + newCol;
+                            openCell(board[neighborId]);
+                        }
+                    }
+                }
+            }
+
+            checkWin();
+        }
+
+        function toggleFlag(cell) {
+            if (!cell.isOpen && gameActive) {
+                cell.isFlagged = !cell.isFlagged;
+                const cellElement = document.querySelector(`[data-id="${cell.id}"]`);
+                cellElement.classList.toggle('flagged');
+                document.getElementById('mine-count').textContent = MINE_COUNT - board.filter(c => c.isFlagged).length;
+            }
+        }
+
+        function checkWin() {
+            const safeCells = board.filter(c => !c.isMine && c.isOpen).length;
+            const totalSafeCells = BOARD_SIZE * BOARD_SIZE - MINE_COUNT;
+            if (safeCells === totalSafeCells) {
+                gameOver(true);
+            }
+        }
+
+        function gameOver(isWin) {
+            gameActive = false;
+            clearInterval(timer);
+            const resultElement = document.getElementById('game-result');
+            resultElement.textContent = isWin ? '🎉 胜利！找到所有安全区域' : '💥 失败！触碰到外星人基地';
+            document.getElementById('game-over').style.display = 'block';
+        }
+
+        function initGame() {
+            // 重置状态
+            gameActive = true;
+            timeElapsed = 0;
+            clearInterval(timer);
+            document.getElementById('time').textContent = timeElapsed;
+            document.getElementById('game-over').style.display = 'none';
+            document.getElementById('mine-count').textContent = MINE_COUNT;
+
+            // 生成新棋盘
+            board = createBoard();
+            const boardElement = document.getElementById('board');
+            boardElement.innerHTML = '';
+
+            board.forEach(cell => {
+                const cellElement = document.createElement('div');
+                cellElement.className = 'cell closed';
+                cellElement.dataset.id = cell.id;
+
+                cellElement.addEventListener('click', () => openCell(cell));
+                cellElement.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    toggleFlag(cell);
+                });
+
+                boardElement.appendChild(cellElement);
+            });
+
+            // 启动计时器
+            timer = setInterval(() => {
+                if (gameActive) {
+                    timeElapsed++;
+                    document.getElementById('time').textContent = timeElapsed;
+                }
+            }, 1000);
+        }
+
+        // 初始化游戏
+        initGame();
+    </script>
+</body>
+</html>
