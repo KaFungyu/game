@@ -256,10 +256,25 @@
                 cellElement.dataset.id = cell.id;
 
                 cellElement.addEventListener('click', () => openCell(cell));
-                cellElement.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
+            cellElement.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                toggleFlag(cell);
+            });
+
+            // 移动端触摸事件处理
+            let touchStartTime = 0;
+            cellElement.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                touchStartTime = Date.now();
+            });
+            cellElement.addEventListener('touchend', (e) => {
+                const touchDuration = Date.now() - touchStartTime;
+                if (touchDuration > 500) {
                     toggleFlag(cell);
-                });
+                } else {
+                    openCell(cell);
+                }
+            });
 
                 boardElement.appendChild(cellElement);
             });
